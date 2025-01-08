@@ -2,11 +2,18 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from blockchain import Blockchain
-import base64
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.exceptions import InvalidSignature
 
 app = FastAPI()
 blockchain = Blockchain()
 
+class UTXO(BaseModel):
+    txid: str
+    index: int
+    amount: float
 
 class Transaction(BaseModel):
     sender: str
@@ -14,8 +21,8 @@ class Transaction(BaseModel):
     amount: float
     public_key: str
     signature: str
-    input_utxos: List[Dict[str, Any]]
-    output_utxos: List[Dict[str, Any]]
+    input_utxos: List[UTXO]
+    output_utxos: List[UTXO]
 
 
 @app.get("/chain")
@@ -34,6 +41,10 @@ def mine_block():
 @app.post("/new_transaction")
 def add_transaction(transaction: Transaction):
     try:
+        # Validate transaction's inputs (UTXO)
+        if not blockchain.is_valid_transaction(transaction.dict()):
+            raise HTTPException(status_code=400, detail="Invalid transaction or UTXOs.")
+        
         blockchain.add_transaction(transaction.dict())
         return {"message": "Transaction added successfully!"}
     except ValueError as e:
